@@ -1,0 +1,109 @@
+Parameters:
+  SubnetID:
+    Type: String
+  CidrBlockForVPC:
+    Default: 172.31.0.0/16
+    Description: CidrBlockForVPC
+    Type: String
+  CidrBlockForSubnet1:
+    Default: 172.31.16.0/20
+    Description: Cidr Block For Subnet1
+    Type: String
+  CidrBlockForSubnet2:
+    Default: 172.31.48.0/20
+    Description: Cidr Block For Subnet2
+    Type: String
+  AvailabilityZoneForSubnet1:
+    Default: us-east-1c
+    Description: AvailabilityZone For Subnet1
+    Type: String
+  AvailabilityZoneForSubnet2:
+    Default: us-east-1b
+    Description: AvailabilityZone For Subnet2
+    Type: String
+
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: deployment-cluster
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: deployment-log-group
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ContainerSecurityGroup
+      GroupDescription: security group for NGINX
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref CidrBlockForVPC
+  Subnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref AvailabilityZoneForSubnet1
+      CidrBlock: !Ref CidrBlockForSubnet1
+  Subnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref AvailabilityZoneForSubnet2
+      CidrBlock: !Ref CidrBlockForSubnet2
+
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: internal
+      Subnets:
+        - !Ref Subnet1
+        - !Ref Subnet2
+  TargetGroup1:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: deployment-example-task
+      cpu: 256
+      memory: 512
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref ExecutionRole
+      ContainerDefinitions:
+        - Name: deployment-container
+          Image: nginx:1.17.7
+          PortMappings:
+            - ContainerPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region 
+              awslogs-group: !Ref LogGroup
+              awslogs-stream-prefix: ecs
+      RequiresCompatibilities:
+        - EC2
+        - FARGATE
